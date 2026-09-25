@@ -35,6 +35,7 @@ Fine-tune matching mode, result limits, similarity thresholds, and debug logging
 
 - **Related Notes View:** Surfaces notes conceptually similar to the current one.
 - **Proxima Graph:** An interactive graph of conceptually related notes, with hover previews.
+- **Wikilink overlay:** Explicit `[[links]]` and backlinks appear alongside semantic matches — as badges in the related notes list and as a themed orbit ring in the graph.
 - **Two-Stage Funnel:** Dense vector retrieval refined by an on-device cross-encoder reranker for high precision.
 - **100% Local & Private:** Runs entirely on-device via WebGPU/WASM. Zero telemetry, no cloud APIs, no external subscriptions.
 

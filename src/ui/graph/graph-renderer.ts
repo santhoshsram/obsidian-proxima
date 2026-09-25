@@ -40,6 +40,13 @@ import {
 	OPTIMISTIC_RIPPLE_PHASES,
 	OPTIMISTIC_RIPPLE_LINE_WIDTH,
 	OPTIMISTIC_RIPPLE_ALPHA_MAX,
+	ORBIT_RADIUS,
+	ORBIT_RING_ALPHA,
+	ORBIT_RING_WIDTH,
+	WIKI_EDGE_WIDTH,
+	WIKI_EDGE_ALPHA,
+	ARROWHEAD_LENGTH,
+	ARROWHEAD_HALF_ANGLE,
 	DEFAULT_SIMILARITY,
 } from './graph-constants';
 
@@ -57,6 +64,7 @@ export interface ThemeColors {
 	accentColor: string;
 	borderColor: string;
 	canvasBg: string;
+	linkColor: string;
 }
 
 /** Reads the current Obsidian theme's CSS custom properties, with sane fallbacks. */
@@ -68,6 +76,11 @@ export function readThemeColors(canvas: HTMLCanvasElement): ThemeColors {
 	const accentColor = styles.getPropertyValue('--interactive-accent').trim() || '#7c3aed';
 	const borderColor = styles.getPropertyValue('--background-modifier-border').trim() || '#363636';
 	const bgPrimary = styles.getPropertyValue('--background-primary').trim() || '#181818';
+	const linkColor =
+		styles.getPropertyValue('--proxima-wikilink-color').trim() ||
+		styles.getPropertyValue('--color-green').trim() ||
+		styles.getPropertyValue('--color-cyan').trim() ||
+		'#4ade80';
 
 	const containerStyle = canvas.parentElement ? getComputedStyle(canvas.parentElement) : null;
 	const canvasBg =
@@ -77,7 +90,7 @@ export function readThemeColors(canvas: HTMLCanvasElement): ThemeColors {
 			? containerStyle.backgroundColor
 			: bgPrimary;
 
-	return { textNormal, textMuted, accentColor, borderColor, canvasBg };
+	return { textNormal, textMuted, accentColor, borderColor, canvasBg, linkColor };
 }
 
 export interface HoverConnections {
@@ -135,12 +148,17 @@ function drawEdge(
 	const isSeedEdge = source.isSeed || target.isSeed;
 	const isSecondary = Boolean(edge.isSecondary || !isSeedEdge);
 	const normScore = normalizeSimilarity(edge.similarity ?? DEFAULT_SIMILARITY);
+	const pureWiki = Boolean(edge.wikiLink) && edge.similarity === undefined;
 
 	let lineWidth: number;
 	let strokeStyle: string;
 	let alpha: number;
 
-	if (isSecondary) {
+	if (pureWiki) {
+		lineWidth = WIKI_EDGE_WIDTH;
+		strokeStyle = theme.linkColor;
+		alpha = isHoveredEdge ? 1.0 : WIKI_EDGE_ALPHA;
+	} else if (isSecondary) {
 		lineWidth = 1.0;
 		if (isHoveredEdge) {
 			strokeStyle = theme.accentColor;
@@ -166,6 +184,63 @@ function drawEdge(
 	ctx.lineWidth = lineWidth;
 	ctx.globalAlpha = alpha;
 	ctx.stroke();
+
+	if (edge.wikiLink) {
+		drawArrowheads(ctx, source, target, edge.wikiLink, theme, alpha);
+	}
+}
+
+/** Draws direction arrowheads at the target and/or source end of a wikilink edge. */
+function drawArrowheads(
+	ctx: CanvasRenderingContext2D,
+	source: GraphNode,
+	target: GraphNode,
+	direction: 'forward' | 'back' | 'both',
+	theme: ThemeColors,
+	alpha: number,
+): void {
+	const sx = source.x!;
+	const sy = source.y ?? 0;
+	const tx = target.x!;
+	const ty = target.y ?? 0;
+	const dx = tx - sx;
+	const dy = ty - sy;
+	const len = Math.hypot(dx, dy);
+	if (len < 1) return;
+	const ux = dx / len;
+	const uy = dy / len;
+	const rSource = source.radius ?? 8;
+	const rTarget = target.radius ?? 8;
+
+	const head = (tipX: number, tipY: number, fromX: number, fromY: number): void => {
+		const ang = Math.atan2(tipY - fromY, tipX - fromX);
+		const half = ARROWHEAD_HALF_ANGLE;
+		ctx.beginPath();
+		ctx.moveTo(tipX, tipY);
+		ctx.lineTo(
+			tipX - ARROWHEAD_LENGTH * Math.cos(ang - half),
+			tipY - ARROWHEAD_LENGTH * Math.sin(ang - half),
+		);
+		ctx.lineTo(
+			tipX - ARROWHEAD_LENGTH * Math.cos(ang + half),
+			tipY - ARROWHEAD_LENGTH * Math.sin(ang + half),
+		);
+		ctx.closePath();
+		ctx.fillStyle = theme.linkColor;
+		ctx.globalAlpha = alpha;
+		ctx.fill();
+	};
+
+	if (direction === 'forward' || direction === 'both') {
+		const tipX = tx - ux * rTarget;
+		const tipY = ty - uy * rTarget;
+		head(tipX, tipY, tipX - ux * ARROWHEAD_LENGTH, tipY - uy * ARROWHEAD_LENGTH);
+	}
+	if (direction === 'back' || direction === 'both') {
+		const tipX = sx + ux * rSource;
+		const tipY = sy + uy * rSource;
+		head(tipX, tipY, tipX + ux * ARROWHEAD_LENGTH, tipY + uy * ARROWHEAD_LENGTH);
+	}
 }
 
 /** Draws all edges whose endpoints are both positioned, applying hover-based highlight styling. */
@@ -182,6 +257,38 @@ export function renderEdges(
 		if (!source || !target || source.x === undefined || target.x === undefined) continue;
 		drawEdge(ctx, edge, source, target, hovered, connectedEdgeIds, theme);
 	}
+}
+
+export interface OrbitRing {
+	cx: number;
+	cy: number;
+	radius: number;
+}
+
+/** Compute the orbit ring geometry, or null when no seed/wiki nodes are visible. */
+export function computeOrbitRing(nodes: GraphNode[], scale: number): OrbitRing | null {
+	const seed = nodes.find((n) => n.isSeed);
+	if (!seed || seed.x === undefined || seed.y === undefined) return null;
+	const hasWiki = nodes.some((n) => n.viaLink || n.linkDirection);
+	if (!hasWiki) return null;
+	return { cx: seed.x, cy: seed.y, radius: ORBIT_RADIUS * scale };
+}
+
+/** Draws the faint orbit ring connecting wikilink nodes around the seed. */
+export function renderOrbitRing(
+	ctx: CanvasRenderingContext2D,
+	nodes: GraphNode[],
+	scale: number,
+	theme: ThemeColors,
+): void {
+	const ring = computeOrbitRing(nodes, scale);
+	if (!ring) return;
+	ctx.beginPath();
+	ctx.arc(ring.cx, ring.cy, ring.radius, 0, Math.PI * 2);
+	ctx.strokeStyle = theme.linkColor;
+	ctx.lineWidth = ORBIT_RING_WIDTH;
+	ctx.globalAlpha = ORBIT_RING_ALPHA;
+	ctx.stroke();
 }
 
 interface NodeStyle {
@@ -201,6 +308,30 @@ function styleForNode(
 ): NodeStyle {
 	if (node.isSeed) {
 		return { nodeAlpha: 1.0, fillStyle: theme.accentColor, strokeStyle: theme.accentColor, strokeWidth: NODE_STROKE_SEED };
+	}
+	if (node.viaLink) {
+		if (isHovered || isConnected) {
+			return {
+				nodeAlpha: 1.0,
+				fillStyle: theme.linkColor,
+				strokeStyle: theme.linkColor,
+				strokeWidth: NODE_STROKE_HOP1_HOVERED,
+			};
+		}
+		if (hovered) {
+			return {
+				nodeAlpha: NODE_ALPHA_HOP1_DIMMED,
+				fillStyle: theme.canvasBg,
+				strokeStyle: theme.linkColor,
+				strokeWidth: NODE_STROKE_HOP1_DIMMED,
+			};
+		}
+		return {
+			nodeAlpha: 1.0,
+			fillStyle: theme.canvasBg,
+			strokeStyle: theme.linkColor,
+			strokeWidth: NODE_STROKE_HOP1_REST,
+		};
 	}
 	if (isHop2) {
 		if (isHovered || isConnected) {

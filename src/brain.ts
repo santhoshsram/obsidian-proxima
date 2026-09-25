@@ -12,6 +12,10 @@ import { IndexingService } from './index/indexing-service';
 import { loadIndex, saveIndex, type LoadedIndex } from './index/persistence';
 import { ObsidianIndexStorage } from './obsidian/storage';
 import { ObsidianVaultSource } from './obsidian/vault-source';
+import {
+	createObsidianLinkResolver,
+	type LinkResolver,
+} from './obsidian/link-resolver';
 import { TransformersEmbedder } from './embed/embedder';
 import type { Embedder } from './embed/embedder';
 import {
@@ -32,7 +36,7 @@ import {
 	candidateChunksWithStrategy,
 	type RetrievalStrategy,
 } from './search/retrieval';
-import { relatedNotes } from './search/related';
+import { relatedNotes, mergeLinkedNotes } from './search/related';
 import type { RelatedNote } from './search/related';
 import { rerankCandidateChunks } from './search/rerank';
 import type { SyncResult } from './index/indexing-service';
@@ -48,6 +52,7 @@ import {
 	type GraphSeed,
 	type GraphData,
 	type GraphBuildOptions,
+	type GraphLinkResolver,
 } from './search/graph';
 
 const REINDEX_DEBOUNCE_MS = 2000;
@@ -75,6 +80,7 @@ export class Brain {
 		enabled: this.plugin.settings?.debugLogging ?? false,
 	});
 	private logFile: BufferedLogFile | null = null;
+	private linkResolver: LinkResolver | null = null;
 
 	embeddingStatus: ModelStatus = { state: 'idle' };
 	rerankerStatus: ModelStatus = { state: 'idle' };
@@ -463,8 +469,33 @@ export class Brain {
 		return result;
 	}
 
-	/** Notes related to the given (usually active) note. */
+	/** Notes related to the given (usually active) note, plus directly linked notes. */
 	async relatedTo(
+		filePath: string,
+		options?: {
+			strategy?: RetrievalStrategy;
+			cursorLine?: number;
+			cursorHeading?: string;
+			chunkIndex?: number;
+		},
+	): Promise<RelatedNote[]> {
+		const notes = await this.relatedToSemantic(filePath, options);
+		return mergeLinkedNotes(notes, filePath, this.getLinksFor(filePath));
+	}
+
+	/** Wikilink sets for a note, resolved live from the metadata cache. */
+	private getLinksFor(path: string): { outgoing: string[]; incoming: string[] } {
+		if (!this.linkResolver) {
+			this.linkResolver = createObsidianLinkResolver(this.plugin.app);
+		}
+		return {
+			outgoing: this.linkResolver.outgoing(path),
+			incoming: this.linkResolver.incoming(path),
+		};
+	}
+
+	/** Pure semantic retrieval, without wikilink merging (used for graph seeding). */
+	private async relatedToSemantic(
 		filePath: string,
 		options?: {
 			strategy?: RetrievalStrategy;
@@ -578,7 +609,7 @@ export class Brain {
 		let initialHop1: Array<{ filePath: string; score: number }> | undefined;
 		if (seed.type === 'note') {
 			try {
-				const related = await this.relatedTo(seed.path);
+				const related = await this.relatedToSemantic(seed.path);
 				if (related && related.length > 0) {
 					initialHop1 = related.map((r) => ({
 						filePath: r.filePath,
@@ -590,12 +621,21 @@ export class Brain {
 			}
 		}
 
+		let links: GraphLinkResolver | undefined;
+		if (seed.type === 'note') {
+			if (!this.linkResolver) {
+				this.linkResolver = createObsidianLinkResolver(this.plugin.app);
+			}
+			links = this.linkResolver;
+		}
+
 		return buildContextGraph(
 			this.index,
 			seed,
 			buildOptions,
 			this.embedder ?? undefined,
 			initialHop1,
+			links,
 		);
 	}
 

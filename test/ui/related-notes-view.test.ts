@@ -567,4 +567,44 @@ describe('RelatedNotesView', () => {
 		expect(view.contentEl.querySelector('canvas')).toBeDefined();
 		expect(view.contentEl.querySelector('.proxima-loading-state')).toBeNull();
 	});
+
+	it('renders link and related badges on note cards', async () => {
+		const chunkRecord = {
+			id: '1',
+			filePath: 'Folder/Beta.md',
+			headingPath: ['Beta'],
+			startLine: 1,
+			endLine: 3,
+			text: 'Text',
+			titleContext: 'Beta',
+			vectorRow: 0,
+		};
+		const sampleResults: RelatedNote[] = [
+			{
+				filePath: 'Folder/Beta.md',
+				bestScore: 0.9,
+				chunks: [{ score: 0.9, record: chunkRecord }],
+				linkDirection: 'out',
+			},
+			{
+				filePath: 'Folder/LinkedOnly.md',
+				bestScore: 0,
+				chunks: [],
+				linkDirection: 'in',
+			},
+		];
+		mockRelatedTo.mockResolvedValue(sampleResults);
+
+		const view = new RelatedNotesView(mockLeaf, mockPlugin);
+		await view.refresh();
+
+		const cards = view.contentEl.querySelectorAll('.proxima-related-note-card');
+		expect(cards.length).toBe(2);
+
+		const badges = view.contentEl.querySelectorAll('.proxima-badge');
+		expect(badges.length).toBe(3);
+		expect(badges[0]?.textContent).toBe('→ Link');
+		expect(badges[1]?.textContent).toBe('Related');
+		expect(badges[2]?.textContent).toBe('← Link');
+	});
 });

@@ -9,18 +9,19 @@ export const SIMILARITY_NORM_MIN = 0.4;
 export const SIMILARITY_NORM_RANGE = 0.55;
 
 /** Scale factor bounds, keyed to container size, used by the constructor/setData (~750px reference). */
-export const INIT_SCALE_MIN = 0.7;
+export const INIT_SCALE_MIN = 0.35;
 export const INIT_SCALE_MAX = 1.3;
 export const INIT_SCALE_REFERENCE_DIM = 750;
 
-/** Scale factor bounds used by resize() (~550px reference, tighter to the visible viewport). */
-export const RESIZE_SCALE_MIN = 0.65;
+/** Scale factor bounds used by resize() (~750px reference, matching setData so a
+ * ResizeObserver pass can't re-inflate the graph after a narrow-container layout). */
+export const RESIZE_SCALE_MIN = 0.35;
 export const RESIZE_SCALE_MAX = 2.0;
-export const RESIZE_SCALE_REFERENCE_DIM = 550;
+export const RESIZE_SCALE_REFERENCE_DIM = 750;
 
 /** Radial distance (px, pre-scale) from seed for hop-1 nodes, by normalized similarity. */
-export const RADIAL_DIST_MIN = 90;
-export const RADIAL_DIST_MAX = 250;
+export const RADIAL_DIST_MIN = 170;
+export const RADIAL_DIST_MAX = 270;
 
 /** Link distance bounds (px, pre-scale) for peer (1-hop cross) edges. */
 export const PEER_LINK_DIST_MIN = 140;
@@ -31,8 +32,8 @@ export const SATELLITE_LINK_DIST_MIN = 42;
 export const SATELLITE_LINK_DIST_MAX = 78;
 
 /** Link distance bounds (px, pre-scale) for primary seed-to-hop-1 edges. */
-export const PRIMARY_LINK_DIST_MIN = 80;
-export const PRIMARY_LINK_DIST_MAX = 240;
+export const PRIMARY_LINK_DIST_MIN = 150;
+export const PRIMARY_LINK_DIST_MAX = 250;
 
 /** Spring strength for peer edges: soft so similar 1-hops drift together without bunching. */
 export const PEER_LINK_STRENGTH = 0.05;
@@ -84,6 +85,23 @@ export const EDGE_ALPHA_PRIMARY_DIMMED = 0.9;
 export const EDGE_PRIMARY_BASE_WIDTH = 1.0;
 export const EDGE_PRIMARY_WIDTH_SCALE = 3.2;
 export const EDGE_PRIMARY_HOVER_WIDTH_MULT = 1.35;
+
+/** Orbit ring (wikilink nodes) rendering constants. */
+export const ORBIT_RADIUS = 140;
+/** Radial spring strength for orbit nodes: dominant so they hug the ring. */
+export const ORBIT_RADIAL_STRENGTH = 1.0;
+/** Charge for orbit nodes: zero so seed/peer repulsion can't push them off the ring. */
+export const ORBIT_CHARGE = 0;
+export const ORBIT_RING_ALPHA = 0.15;
+export const ORBIT_RING_WIDTH = 1;
+
+/** Wikilink edge rendering constants. */
+export const WIKI_EDGE_WIDTH = 1.5;
+export const WIKI_EDGE_ALPHA = 0.55;
+
+/** Arrowhead geometry for directed wikilink edges. */
+export const ARROWHEAD_LENGTH = 8;
+export const ARROWHEAD_HALF_ANGLE = Math.PI / 7;
 
 /** Node rendering alpha/stroke values, by role and state. */
 export const NODE_ALPHA_HOP2_ACTIVE = 0.95;

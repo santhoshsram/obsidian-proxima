@@ -35,6 +35,11 @@ export interface ProximaSettings {
 
 	/** Preferred companion view mode in sidebar (list or graph). */
 	sidebarViewMode: 'list' | 'graph';
+
+	/** Show semantic edges in the graph. */
+	graphShowRelated: boolean;
+	/** Show wikilink edges/nodes in the graph. */
+	graphShowWikilinks: boolean;
 }
 
 export const DEFAULT_SETTINGS: ProximaSettings = {
@@ -51,6 +56,8 @@ export const DEFAULT_SETTINGS: ProximaSettings = {
 	lastIndexedAt: null,
 
 	sidebarViewMode: 'list',
+	graphShowRelated: true,
+	graphShowWikilinks: false,
 };
 
 export interface ModelStatus {

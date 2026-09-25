@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContextGraphEngine } from '../../src/ui/graph/context-graph-engine';
 import { MockElement } from '../mocks/obsidian';
-import type { GraphData } from '../../src/search/graph';
+import { ORBIT_RADIUS } from '../../src/ui/graph/graph-constants';
+import { chargeForNode, radialStrengthForNode } from '../../src/ui/graph/graph-physics';
+import type { GraphData, GraphNode } from '../../src/search/graph';
 
 describe('ContextGraphEngine', () => {
 	let container: MockElement;
@@ -165,6 +167,41 @@ describe('ContextGraphEngine', () => {
 		expect(() => engine.render()).not.toThrow();
 	});
 
+	it('places wikilink nodes smack on the orbit circumference', () => {
+		const data: GraphData = {
+			seed: { type: 'note', path: 'Seed.md' },
+			nodes: [
+				{ id: 'Seed.md', label: 'Seed', isSeed: true, hop: 0, radius: 10 },
+				{ id: 'Linked.md', label: 'Linked', isSeed: false, hop: 1, viaLink: true, linkDirection: 'out', radius: 7 },
+			],
+			edges: [{ id: 'Seed---Linked', source: 'Seed.md', target: 'Linked.md', wikiLink: 'forward' }],
+		};
+		engine.setData(data);
+
+		const seed = engine.getNodes().find((n) => n.id === 'Seed.md');
+		const linked = engine.getNodes().find((n) => n.id === 'Linked.md');
+		const dist = Math.hypot(
+			(linked?.x ?? 0) - (seed?.x ?? 0),
+			(linked?.y ?? 0) - (seed?.y ?? 0),
+		);
+
+		// Default mock container is 800x600 → scale = 600 / 750 = 0.8.
+		expect(dist).toBeCloseTo(ORBIT_RADIUS * 0.8, 0);
+	});
+
+	it('gives orbit nodes zero charge and full radial strength so they stay on the ring', () => {
+		const orbitNode: GraphNode = {
+			id: 'Linked.md',
+			label: 'Linked',
+			isSeed: false,
+			hop: 1,
+			viaLink: true,
+			linkDirection: 'out',
+		};
+		expect(chargeForNode(orbitNode, 1)).toBe(0);
+		expect(radialStrengthForNode(orbitNode)).toBe(1);
+	});
+
 	describe('Physics: Distance = Relevance', () => {
 		it('assigns shorter spring distance and radial distance to high similarity nodes than low similarity nodes', () => {
 			const data: GraphData = {
@@ -193,6 +230,26 @@ describe('ContextGraphEngine', () => {
 			const lowRadius = engine.getRadialRadius(data.nodes[2]!);
 			expect(highRadius).toBeLessThan(lowRadius);
 			expect(lowRadius - highRadius).toBeGreaterThan(50);
+		});
+
+		it('pins wikilink-only nodes to the orbit radius', () => {
+			const data: GraphData = {
+				seed: { type: 'note', path: 'Seed.md' },
+				nodes: [
+					{ id: 'Seed.md', label: 'Seed', isSeed: true, hop: 0, radius: 10 },
+					{ id: 'Linked.md', label: 'Linked', isSeed: false, hop: 1, viaLink: true, linkDirection: 'out', radius: 7 },
+					{ id: 'Related.md', label: 'Related', isSeed: false, hop: 1, similarity: 0.9, radius: 7 },
+				],
+				edges: [
+					{ id: 'Seed---Linked', source: 'Seed.md', target: 'Linked.md', wikiLink: 'forward' },
+					{ id: 'Seed---Related', source: 'Seed.md', target: 'Related.md', similarity: 0.9 },
+				],
+			};
+			engine.setData(data);
+
+			const linkedRadius = engine.getRadialRadius(data.nodes[1]!);
+			const relatedRadius = engine.getRadialRadius(data.nodes[2]!);
+			expect(linkedRadius).toBeLessThan(relatedRadius);
 		});
 	});
 
@@ -327,6 +384,21 @@ describe('ContextGraphEngine', () => {
 			expect(nodes[0]?.y).toBe(300);
 
 			expect(engine.getEdges().length).toBe(0);
+			expect(engine.isOptimisticLoading()).toBe(true);
+		});
+
+		it('synthesizes a placeholder seed when the focus id does not exist yet (initial load)', () => {
+			// No data set: nodes is empty, so optimisticFocus has no node to
+			// focus. It should still enter the loading state with a placeholder.
+			engine.optimisticFocus('__init__', 'My Note');
+
+			const nodes = engine.getNodes();
+			expect(nodes.length).toBe(1);
+			expect(nodes[0]?.id).toBe('__init__');
+			expect(nodes[0]?.isSeed).toBe(true);
+			expect(nodes[0]?.label).toBe('My Note');
+			expect(nodes[0]?.x).toBe(400);
+			expect(nodes[0]?.y).toBe(300);
 			expect(engine.isOptimisticLoading()).toBe(true);
 		});
 

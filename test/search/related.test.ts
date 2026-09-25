@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { relatedNotes } from '../../src/search/related';
+import { relatedNotes, mergeLinkedNotes } from '../../src/search/related';
 import type { ScoredChunk } from '../../src/index/chunk-index';
 
 function scored(filePath: string, text: string, score: number): ScoredChunk {
@@ -69,5 +69,45 @@ describe('relatedNotes', () => {
 		expect(
 			relatedNotes([], { maxNotes: 10, maxChunksPerNote: 3 }),
 		).toEqual([]);
+	});
+});
+
+describe('mergeLinkedNotes', () => {
+	it('annotates semantic notes with their wikilink direction', () => {
+		const notes = [
+			{ filePath: 'a.md', bestScore: 0.9, chunks: [scored('a.md', 'a', 0.9)] },
+			{ filePath: 'b.md', bestScore: 0.8, chunks: [scored('b.md', 'b', 0.8)] },
+			{ filePath: 'c.md', bestScore: 0.7, chunks: [scored('c.md', 'c', 0.7)] },
+		];
+		const out = mergeLinkedNotes(notes, 'self.md', {
+			outgoing: ['a.md', 'b.md'],
+			incoming: ['b.md'],
+		});
+		expect(out[0]?.linkDirection).toBe('out');
+		expect(out[1]?.linkDirection).toBe('both');
+		expect(out[2]?.linkDirection).toBeUndefined();
+	});
+
+	it('appends linked-only notes after semantic matches', () => {
+		const notes = [
+			{ filePath: 'a.md', bestScore: 0.9, chunks: [scored('a.md', 'a', 0.9)] },
+		];
+		const out = mergeLinkedNotes(notes, 'self.md', {
+			outgoing: ['linked.md'],
+			incoming: ['back.md'],
+		});
+		expect(out.map((n) => n.filePath)).toEqual(['a.md', 'linked.md', 'back.md']);
+		expect(out[1]?.linkDirection).toBe('out');
+		expect(out[1]?.chunks).toEqual([]);
+		expect(out[2]?.linkDirection).toBe('in');
+	});
+
+	it('excludes the source note and de-duplicates links', () => {
+		const out = mergeLinkedNotes([], 'self.md', {
+			outgoing: ['self.md', 'x.md'],
+			incoming: ['x.md'],
+		});
+		expect(out.map((n) => n.filePath)).toEqual(['x.md']);
+		expect(out[0]?.linkDirection).toBe('both');
 	});
 });

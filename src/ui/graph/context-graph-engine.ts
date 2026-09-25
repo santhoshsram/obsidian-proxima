@@ -38,7 +38,7 @@ import {
 } from './graph-constants';
 import { updateForces, radialDistanceForNode } from './graph-physics';
 import { computeNodePositions, placeNodes, type ExistingPosition } from './graph-layout';
-import { readThemeColors, computeHoverConnections, renderEdges, renderNode } from './graph-renderer';
+import { readThemeColors, computeHoverConnections, renderEdges, renderNode, renderOrbitRing } from './graph-renderer';
 import {
 	applyWheelZoom,
 	findNodeAt,
@@ -90,6 +90,7 @@ export class ContextGraphEngine {
 	private dragStartY = 0;
 	private hasDragged = false;
 	private currentSeedKey: string | null = null;
+	private layoutScale = 1;
 
 	private resizeObserver: ResizeObserver | null = null;
 	private animFrameId: number | null = null;
@@ -118,6 +119,7 @@ export class ContextGraphEngine {
 		const rect = containerRect(container);
 		const minDim = Math.min(rect.width, rect.height);
 		const scale = Math.max(INIT_SCALE_MIN, Math.min(INIT_SCALE_MAX, minDim / INIT_SCALE_REFERENCE_DIM));
+		this.layoutScale = scale;
 
 		this.centerForce = forceCenter(rect.width / 2, rect.height / 2);
 		this.linkForce = forceLink<GraphNode, GraphEdge>(this.edges).id((d) => d.id);
@@ -185,14 +187,18 @@ export class ContextGraphEngine {
 	}
 
 	optimisticFocus(nodeId: string, newTitle?: string): void {
-		const targetNode = this.nodes.find((n) => n.id === nodeId);
-		if (!targetNode) return;
-
 		this.tooltipEl.addClass('is-hidden');
 
 		const rect = containerRect(this.container);
 		const cx = rect.width / 2;
 		const cy = rect.height / 2;
+
+		// When no node with this id exists yet (initial load, or a query search
+		// before any graph is present), synthesize a placeholder seed so the
+		// optimistic glow still renders instead of silently returning.
+		const targetNode: GraphNode =
+			this.nodes.find((n) => n.id === nodeId) ??
+			{ id: nodeId, label: newTitle ?? nodeId, isSeed: true, hop: 0 };
 
 		targetNode.isSeed = true;
 		targetNode.hop = 0;
@@ -252,6 +258,7 @@ export class ContextGraphEngine {
 		const cy = rect.height / 2;
 		const minDim = Math.min(rect.width, rect.height);
 		const scale = Math.max(INIT_SCALE_MIN, Math.min(INIT_SCALE_MAX, minDim / INIT_SCALE_REFERENCE_DIM));
+		this.layoutScale = scale;
 
 		const newSeedKey = data.seed.type === 'note' ? data.seed.path : data.seed.query;
 		const isNewSeed = this.currentSeedKey !== newSeedKey;
@@ -274,6 +281,8 @@ export class ContextGraphEngine {
 
 		this.centerForce.x(cx);
 		this.centerForce.y(cy);
+		this.radialForce.x(cx);
+		this.radialForce.y(cy);
 		this.applyForces(scale);
 
 		this.simulation.nodes(this.nodes);
@@ -417,6 +426,7 @@ export class ContextGraphEngine {
 		const cy = rect.height / 2;
 		const minDim = Math.min(rect.width, rect.height);
 		const scale = Math.max(RESIZE_SCALE_MIN, Math.min(RESIZE_SCALE_MAX, minDim / RESIZE_SCALE_REFERENCE_DIM));
+		this.layoutScale = scale;
 
 		const dpr = window.devicePixelRatio || 1;
 		this.canvas.width = rect.width * dpr;
@@ -427,6 +437,8 @@ export class ContextGraphEngine {
 
 		this.centerForce.x(cx);
 		this.centerForce.y(cy);
+		this.radialForce.x(cx);
+		this.radialForce.y(cy);
 
 		const seed = this.nodes.find((n) => n.isSeed);
 		if (seed && (!this.draggedNode || this.draggedNode !== seed)) {
@@ -460,6 +472,7 @@ export class ContextGraphEngine {
 		const hovered = this.hoveredNode;
 		const { connectedNodeIds, connectedEdgeIds } = computeHoverConnections(hovered, this.edges);
 
+		renderOrbitRing(ctx, this.nodes, this.layoutScale, theme);
 		renderEdges(ctx, this.edges, hovered, connectedEdgeIds, theme);
 
 		// Draw nodes in stratified layers so hop-2 satellites sit behind hop-1

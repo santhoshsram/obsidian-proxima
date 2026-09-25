@@ -31,6 +31,9 @@ import {
 	RADIAL_DIST_MIN,
 	RADIAL_DIST_MAX,
 	RADIAL_STRENGTH_HOP1,
+	ORBIT_RADIUS,
+	ORBIT_RADIAL_STRENGTH,
+	ORBIT_CHARGE,
 	ANGULAR_MIN_SEPARATION_RAD,
 	ANGULAR_FORCE_MAGNITUDE,
 	COLLIDE_PADDING_HOP2,
@@ -41,12 +44,16 @@ import {
 /** Radial target distance from the seed for a hop-1 node, by normalized similarity. */
 export function radialDistanceForNode(node: GraphNode, scale: number): number {
 	if (node.isSeed || node.hop > 1) return 0;
+	if (node.viaLink || node.linkDirection) return ORBIT_RADIUS * scale;
 	const norm = normalizeSimilarity(node.similarity ?? DEFAULT_SIMILARITY);
 	return RADIAL_DIST_MIN * scale + (1 - norm) * (RADIAL_DIST_MAX - RADIAL_DIST_MIN) * scale;
 }
 
 /** Edge link distance, by edge kind, scaled to normalized similarity. */
 export function linkDistanceForEdge(edge: GraphEdge, scale: number): number {
+	if (edge.wikiLink) {
+		return ORBIT_RADIUS * scale;
+	}
 	const normScore = normalizeSimilarity(edge.similarity ?? DEFAULT_SIMILARITY);
 
 	if (edge.kind === 'peer') {
@@ -64,6 +71,7 @@ export function linkDistanceForEdge(edge: GraphEdge, scale: number): number {
 }
 
 export function linkStrengthForEdge(edge: GraphEdge): number {
+	if (edge.wikiLink && edge.similarity === undefined) return PEER_LINK_STRENGTH;
 	if (edge.kind === 'peer') return PEER_LINK_STRENGTH;
 	if (edge.isSecondary || edge.kind === 'satellite') return SATELLITE_LINK_STRENGTH;
 	return PRIMARY_LINK_STRENGTH;
@@ -71,12 +79,14 @@ export function linkStrengthForEdge(edge: GraphEdge): number {
 
 export function chargeForNode(node: GraphNode, scale: number): number {
 	if (node.isSeed) return SEED_CHARGE * scale;
+	if (node.viaLink || node.linkDirection) return ORBIT_CHARGE * scale;
 	if (node.hop > 1) return HOP2_CHARGE * scale;
 	return DEFAULT_CHARGE * scale;
 }
 
 export function radialStrengthForNode(node: GraphNode): number {
 	if (node.isSeed) return 1.0;
+	if (node.viaLink || node.linkDirection) return ORBIT_RADIAL_STRENGTH;
 	if (node.hop > 1) return 0;
 	return RADIAL_STRENGTH_HOP1;
 }
@@ -113,12 +123,43 @@ export function updateForces(
 	);
 
 	simulation.force('angular', createAngularForce(nodesRef, centerForce, scale));
+
+	// Hard radial constraint for wikilink/orbit nodes: project them onto the
+	// ring each tick so their center lies exactly on the circumference. This
+	// overrides charge/collide/link forces that would otherwise nudge them off.
+	simulation.force('orbitConstraint', createOrbitConstraint(nodesRef, centerForce, scale));
 }
 
 /**
  * Nudges hop-1 nodes apart in polar angle around the seed so adjacent spokes
  * keep a minimum angular clearance, preventing label/line crowding at low node counts.
  */
+/**
+ * Constrains wikilink (orbit) nodes to the exact orbit circumference each tick.
+ * Runs last so charge, collide, and link forces can't leave them off the ring.
+ * Position is fixed; only velocity is used by the simulation, so we set both.
+ */
+function createOrbitConstraint(nodesRef: () => GraphNode[], centerForce: ForceCenter<GraphNode>, scale: number) {
+	return () => {
+		const nodes = nodesRef();
+		const seed = nodes.find((n) => n.isSeed);
+		const cx = seed?.x ?? centerForce.x?.() ?? DEFAULT_CANVAS_WIDTH / 2;
+		const cy = seed?.y ?? centerForce.y?.() ?? DEFAULT_CANVAS_HEIGHT / 2;
+		const r = ORBIT_RADIUS * scale;
+		for (const n of nodes) {
+			if (!(n.viaLink || n.linkDirection) || n.x === undefined || n.y === undefined) continue;
+			const dx = n.x - cx;
+			const dy = n.y - cy;
+			const len = Math.hypot(dx, dy);
+			if (len < 1e-6) continue;
+			const nx = cx + (dx / len) * r;
+			const ny = cy + (dy / len) * r;
+			n.x = nx;
+			n.y = ny;
+		}
+	};
+}
+
 function createAngularForce(
 	nodesRef: () => GraphNode[],
 	centerForce: ForceCenter<GraphNode>,

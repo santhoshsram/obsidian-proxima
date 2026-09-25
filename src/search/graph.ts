@@ -8,10 +8,17 @@
 
 import type { ChunkIndex } from '../index/chunk-index';
 import type { Embedder } from '../embed/embedder';
+import { GRAPH_CONFIG } from '../config';
 
 export type GraphSeed =
 	| { type: 'note'; path: string }
 	| { type: 'query'; query: string };
+
+/** Wikilink resolution for a note, injected so the builder stays pure. */
+export interface GraphLinkResolver {
+	outgoing(path: string): string[];
+	incoming(path: string): string[];
+}
 
 export interface GraphNode {
 	id: string;
@@ -23,6 +30,10 @@ export interface GraphNode {
 	radius?: number;
 	parentId?: string;
 	sneakPeek?: string[];
+	/** True when this node was promoted purely from a wikilink (not semantic). */
+	viaLink?: boolean;
+	/** Wikilink direction relative to the seed note. */
+	linkDirection?: 'out' | 'in' | 'both';
 	x?: number;
 	y?: number;
 	vx?: number;
@@ -35,9 +46,11 @@ export interface GraphEdge {
 	id: string;
 	source: string | GraphNode;
 	target: string | GraphNode;
-	similarity: number;
+	similarity?: number;
 	isSecondary?: boolean;
 	kind?: 'primary' | 'peer' | 'satellite';
+	/** Wikilink direction relative to edge.source → edge.target. */
+	wikiLink?: 'forward' | 'back' | 'both';
 }
 
 export interface GraphData {
@@ -94,6 +107,7 @@ export async function buildContextGraph(
 	options: GraphBuildOptions,
 	embedder?: Embedder,
 	initialHop1?: Array<{ filePath: string; score: number }>,
+	links?: GraphLinkResolver,
 ): Promise<GraphData> {
 	const hop1Count = Math.max(
 		1,
@@ -350,6 +364,62 @@ export async function buildContextGraph(
 
 			if (addEdge(h1.id, cand.file, cand.score, true, 'satellite')) {
 				addedForH1++;
+			}
+		}
+	}
+
+	// Wikilink overlay (note seeds only): promote the seed's direct linked
+	// notes onto the orbit and add seed↔note wikilink edges. We deliberately
+	// do NOT connect wikilinks between non-seed neighbors (noise territory).
+	if (links && seed.type === 'note') {
+		const outgoing = new Set(links.outgoing(seed.path));
+		const incoming = new Set(links.incoming(seed.path));
+		const union = new Set<string>([...outgoing, ...incoming]);
+
+		let linkOnlyAdded = 0;
+		for (const path of union) {
+			const direction: 'out' | 'in' | 'both' =
+				outgoing.has(path) && incoming.has(path)
+					? 'both'
+					: outgoing.has(path)
+						? 'out'
+						: 'in';
+
+			const existing = nodes.find((n) => n.filePath === path);
+			if (!existing && linkOnlyAdded >= GRAPH_CONFIG.seedLinkNodeCap) {
+				continue;
+			}
+			if (existing) {
+				existing.linkDirection = direction;
+			} else {
+				linkOnlyAdded++;
+				visitedFiles.add(path);
+				nodes.push({
+					id: path,
+					label: noteLabel(path),
+					filePath: path,
+					isSeed: false,
+					hop: 1,
+					viaLink: true,
+					linkDirection: direction,
+					radius: 7,
+				});
+			}
+
+			// Direction is relative to the edge's fixed orientation seed→path.
+			const wikiLink: GraphEdge['wikiLink'] =
+				direction === 'out' ? 'forward' : direction === 'in' ? 'back' : 'both';
+			const pairKey = [seed.path, path].sort().join('---');
+			const seedEdge = edges.find((e) => e.id === pairKey);
+			if (seedEdge) {
+				seedEdge.wikiLink = wikiLink;
+			} else {
+				edges.push({
+					id: pairKey,
+					source: seed.path,
+					target: path,
+					wikiLink,
+				});
 			}
 		}
 	}

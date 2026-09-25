@@ -58,6 +58,7 @@ export class MockElement {
 	style: Record<string, string> = {};
 	width = 800;
 	height = 600;
+	checked = false;
 
 	constructor(tagName = 'div') {
 		this.tagName = tagName;
@@ -142,6 +143,11 @@ export class MockElement {
 
 	setText(text: string) {
 		this.textContent = text;
+		return this;
+	}
+
+	setAttr(name: string, value: string) {
+		this.attributes[name] = value;
 		return this;
 	}
 

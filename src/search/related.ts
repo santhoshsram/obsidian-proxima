@@ -14,6 +14,62 @@ export interface RelatedNote {
 	chunks: ScoredChunk[];
 	/** Heading in the source note that produced the strongest match. */
 	matchedSourceHeading?: string;
+	/**
+	 * Wikilink relationship to the source note: 'out' = source links here,
+	 * 'in' = this note links to source (backlink), 'both' = mutual links.
+	 */
+	linkDirection?: 'out' | 'in' | 'both';
+}
+
+export interface LinkSets {
+	/** Resolved markdown paths the source note links to. */
+	outgoing: string[];
+	/** Resolved markdown paths that link to the source note. */
+	incoming: string[];
+}
+
+/**
+ * Annotate semantic results with their wikilink direction and append any
+ * directly-linked notes that did not surface semantically (the inclusion
+ * guarantee). Linked-only notes carry no chunks and are appended after the
+ * semantic matches, discovery-first, outside the `maxNotes` limit.
+ */
+export function mergeLinkedNotes(
+	notes: RelatedNote[],
+	sourcePath: string,
+	links: LinkSets,
+): RelatedNote[] {
+	const outgoing = new Set(links.outgoing);
+	const incoming = new Set(links.incoming);
+
+	const directionFor = (path: string): 'out' | 'in' | 'both' | undefined => {
+		const hasOut = outgoing.has(path);
+		const hasIn = incoming.has(path);
+		if (hasOut && hasIn) return 'both';
+		if (hasOut) return 'out';
+		if (hasIn) return 'in';
+		return undefined;
+	};
+
+	const annotated = notes.map((note) => {
+		const linkDirection = directionFor(note.filePath);
+		return linkDirection ? { ...note, linkDirection } : note;
+	});
+
+	const present = new Set(annotated.map((n) => n.filePath));
+	const appended: RelatedNote[] = [];
+	for (const path of [...outgoing, ...incoming]) {
+		if (path === sourcePath || present.has(path)) continue;
+		present.add(path);
+		appended.push({
+			filePath: path,
+			bestScore: 0,
+			chunks: [],
+			linkDirection: directionFor(path),
+		});
+	}
+
+	return [...annotated, ...appended];
 }
 
 export interface RelatedOptions {

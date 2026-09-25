@@ -5,6 +5,7 @@ import {
 	buildContextGraph,
 	maxNoteSimilarity,
 	type GraphSeed,
+	type GraphLinkResolver,
 } from '../../src/search/graph';
 import type { Embedder } from '../../src/embed/embedder';
 
@@ -259,6 +260,174 @@ describe('graph data layer', () => {
 			for (const edge of graph.edges) {
 				const isSeedEdge = edge.source === '__query__' || edge.target === '__query__';
 				expect(isSeedEdge).toBe(true);
+			}
+		});
+	});
+
+	describe('buildContextGraph wikilink overlay', () => {
+		it('promotes seed wikilinks as orbit nodes with directional edges', async () => {
+			const index = new ChunkIndex(new BruteForceVectorStore(dim));
+			const v0 = unitVector(dim, 0);
+			await index.updateFile(
+				'Alpha.md',
+				[{ filePath: 'Alpha.md', headingPath: [], titleContext: 'Alpha', text: 'Alpha text' }],
+				async () => [v0],
+			);
+
+			const links: GraphLinkResolver = {
+				outgoing: (p) => {
+					if (p === 'Alpha.md') return ['Linked.md'];
+					if (p === 'Backlink.md') return ['Alpha.md'];
+					return [];
+				},
+				incoming: (p) => (p === 'Alpha.md' ? ['Backlink.md'] : []),
+			};
+
+			const graph = await buildContextGraph(
+				index,
+				{ type: 'note', path: 'Alpha.md' },
+				{ graphHop1Count: 0, graphHop2Count: 0, graphSimilarityThreshold: 0.8 },
+				undefined,
+				undefined,
+				links,
+			);
+
+			const linkedNode = graph.nodes.find((n) => n.id === 'Linked.md');
+			expect(linkedNode?.viaLink).toBe(true);
+			expect(linkedNode?.linkDirection).toBe('out');
+
+			const backlinkNode = graph.nodes.find((n) => n.id === 'Backlink.md');
+			expect(backlinkNode?.viaLink).toBe(true);
+			expect(backlinkNode?.linkDirection).toBe('in');
+
+			const outEdge = graph.edges.find(
+				(e) => e.id === ['Alpha.md', 'Linked.md'].sort().join('---'),
+			);
+			expect(outEdge?.wikiLink).toBe('forward');
+
+			const inEdge = graph.edges.find(
+				(e) => e.id === ['Alpha.md', 'Backlink.md'].sort().join('---'),
+			);
+			expect(inEdge?.wikiLink).toBe('back');
+		});
+
+		it('marks a semantic note as dual when it is also wikilinked', async () => {
+			const index = new ChunkIndex(new BruteForceVectorStore(dim));
+			const v0 = unitVector(dim, 0);
+			const vBeta = blendVectors(v0, unitVector(dim, 1), 0.9, 0.1);
+			await index.updateFile(
+				'Alpha.md',
+				[{ filePath: 'Alpha.md', headingPath: [], titleContext: 'Alpha', text: 'Alpha text' }],
+				async () => [v0],
+			);
+			await index.updateFile(
+				'Beta.md',
+				[{ filePath: 'Beta.md', headingPath: [], titleContext: 'Beta', text: 'Beta text' }],
+				async () => [vBeta],
+			);
+
+			const links: GraphLinkResolver = {
+				outgoing: (p) => (p === 'Alpha.md' ? ['Beta.md'] : []),
+				incoming: () => [],
+			};
+
+			const graph = await buildContextGraph(
+				index,
+				{ type: 'note', path: 'Alpha.md' },
+				{ graphHop1Count: 5, graphHop2Count: 0, graphSimilarityThreshold: 0.8 },
+				undefined,
+				undefined,
+				links,
+			);
+
+			const betaNode = graph.nodes.find((n) => n.id === 'Beta.md');
+			expect(betaNode?.viaLink).toBeUndefined();
+			expect(betaNode?.linkDirection).toBe('out');
+
+			const seedEdge = graph.edges.find(
+				(e) => e.id === ['Alpha.md', 'Beta.md'].sort().join('---'),
+			);
+			expect(seedEdge?.wikiLink).toBe('forward');
+			expect(seedEdge?.similarity).toBeDefined();
+		});
+
+		it('does not overlay wikilinks for query seeds', async () => {
+			const index = new ChunkIndex(new BruteForceVectorStore(dim));
+			const v0 = unitVector(dim, 0);
+			await index.updateFile(
+				'Alpha.md',
+				[{ filePath: 'Alpha.md', headingPath: [], titleContext: 'Alpha', text: 'Alpha text' }],
+				async () => [v0],
+			);
+
+			const links: GraphLinkResolver = {
+				outgoing: () => ['Beta.md'],
+				incoming: () => [],
+			};
+			const embedQueryMock = vi.fn().mockResolvedValue(v0);
+			const mockEmbedder: Embedder = {
+				dimensions: dim,
+				embedDocuments: vi.fn(),
+				embedQuery: embedQueryMock,
+			};
+
+			const graph = await buildContextGraph(
+				index,
+				{ type: 'query', query: 'x' },
+				{ graphHop1Count: 5, graphHop2Count: 0, graphSimilarityThreshold: 0.8 },
+				mockEmbedder,
+				undefined,
+				links,
+			);
+
+			expect(graph.nodes.some((n) => n.viaLink)).toBe(false);
+			expect(graph.edges.some((e) => e.wikiLink)).toBe(false);
+		});
+
+		it('does not connect wikilinks between non-seed neighbors', async () => {
+			const index = new ChunkIndex(new BruteForceVectorStore(dim));
+			const v0 = unitVector(dim, 0);
+			await index.updateFile(
+				'Alpha.md',
+				[{ filePath: 'Alpha.md', headingPath: [], titleContext: 'Alpha', text: 'Alpha text' }],
+				async () => [v0],
+			);
+
+			// Alpha links to B and C; B also links to C. Only Alpha's links
+			// should surface — never the B↔C neighbor link.
+			const links: GraphLinkResolver = {
+				outgoing: (p) => {
+					if (p === 'Alpha.md') return ['B.md', 'C.md'];
+					if (p === 'B.md') return ['C.md'];
+					return [];
+				},
+				incoming: () => [],
+			};
+
+			const graph = await buildContextGraph(
+				index,
+				{ type: 'note', path: 'Alpha.md' },
+				{ graphHop1Count: 0, graphHop2Count: 0, graphSimilarityThreshold: 0.8 },
+				undefined,
+				undefined,
+				links,
+			);
+
+			const bNode = graph.nodes.find((n) => n.id === 'B.md');
+			const cNode = graph.nodes.find((n) => n.id === 'C.md');
+			expect(bNode?.viaLink).toBe(true);
+			expect(cNode?.viaLink).toBe(true);
+
+			const neighborEdge = graph.edges.find(
+				(e) => e.id === ['B.md', 'C.md'].sort().join('---'),
+			);
+			expect(neighborEdge).toBeUndefined();
+
+			// Only seed→B and seed→C wikilink edges exist.
+			const wikiEdges = graph.edges.filter((e) => e.wikiLink);
+			expect(wikiEdges.length).toBe(2);
+			for (const edge of wikiEdges) {
+				expect([edge.source, edge.target]).toContain('Alpha.md');
 			}
 		});
 	});

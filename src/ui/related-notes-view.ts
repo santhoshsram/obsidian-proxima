@@ -11,6 +11,7 @@ import type { RelatedNote } from '../search/related';
 import { getSectionDisplay } from './snippet';
 import { debounce, type DebouncedFn } from '../utils/debounce';
 import { ContextGraphEngine } from './graph/context-graph-engine';
+import { GraphControls, filterGraphData } from './graph/graph-controls';
 import type { GraphData } from '../search/graph';
 
 export const VIEW_TYPE_RELATED = 'brain-related-notes';
@@ -22,6 +23,8 @@ export class RelatedNotesView extends ItemView {
 	private wasIndexing = false;
 	private mode: 'list' | 'graph' = 'list';
 	private graphEngine: ContextGraphEngine | null = null;
+	private graphControls: GraphControls | null = null;
+	private rawGraphData: GraphData | null = null;
 
 	private headerEl: HTMLElement | null = null;
 	private listBtn: HTMLButtonElement | null = null;
@@ -151,6 +154,8 @@ export class RelatedNotesView extends ItemView {
 			this.graphEngine.destroy();
 			this.graphEngine = null;
 		}
+		this.graphControls = null;
+		this.rawGraphData = null;
 	}
 
 	renderLoading(message: string): void {
@@ -295,7 +300,7 @@ export class RelatedNotesView extends ItemView {
 					this.graphEngine?.optimisticFocus(node.id, node.label);
 					void this.plugin.brain
 						.getGraphData({ type: 'note', path: node.filePath })
-						.then((d) => this.graphEngine?.setData(d));
+						.then((d) => this.applyGraphData(d));
 				}
 			},
 			onNodeDoubleClick: (node) => {
@@ -304,7 +309,22 @@ export class RelatedNotesView extends ItemView {
 				}
 			},
 		});
-		this.graphEngine.setData(data);
+
+		this.graphControls = new GraphControls(graphContainer, this.plugin, () => {
+			this.applyGraphData(this.rawGraphData);
+		});
+
+		this.applyGraphData(data);
+	}
+
+	private applyGraphData(data: GraphData | null): void {
+		if (!data || !this.graphEngine) return;
+		this.rawGraphData = data;
+		const opts = this.graphControls?.getOptions() ?? {
+			showRelated: true,
+			showWikilinks: false,
+		};
+		this.graphEngine.setData(filterGraphData(data, opts));
 	}
 
 	private renderResults(related: RelatedNote[]): void {
@@ -318,7 +338,12 @@ export class RelatedNotesView extends ItemView {
 		const maxNotes = this.plugin.settings.maxRelatedNotes ?? 10;
 		const maxChunks = this.plugin.settings.maxChunksPerNote ?? 3;
 
-		for (const note of related.slice(0, maxNotes)) {
+		const semantic = related
+			.filter((n) => (n.chunks?.length ?? 0) > 0)
+			.slice(0, maxNotes);
+		const linkOnly = related.filter((n) => (n.chunks?.length ?? 0) === 0);
+
+		for (const note of [...semantic, ...linkOnly]) {
 			const cardEl = listEl.createDiv({
 				cls: 'proxima-related-note-card',
 			});
@@ -336,6 +361,8 @@ export class RelatedNotesView extends ItemView {
 				cls: 'proxima-related-note-title',
 				text: noteTitle,
 			});
+
+			this.renderBadges(headerEl, note);
 
 			const firstChunkLine = note.chunks?.[0]?.record?.startLine;
 			this.registerDomEvent(headerEl, 'click', () => {
@@ -374,6 +401,24 @@ export class RelatedNotesView extends ItemView {
 	private getNoteTitle(filePath: string): string {
 		const basename = filePath.split('/').pop() ?? filePath;
 		return basename.replace(/\.md$/, '');
+	}
+
+	private renderBadges(headerEl: HTMLElement, note: RelatedNote): void {
+		if (note.linkDirection === 'out' || note.linkDirection === 'both') {
+			this.createBadge(headerEl, '→ Link', 'proxima-badge proxima-badge--link-out', 'You link to this note');
+		}
+		if (note.linkDirection === 'in' || note.linkDirection === 'both') {
+			this.createBadge(headerEl, '← Link', 'proxima-badge proxima-badge--link-in', 'This note links here');
+		}
+		if ((note.chunks?.length ?? 0) > 0) {
+			this.createBadge(headerEl, 'Related', 'proxima-badge proxima-badge--related', 'Semantically related');
+		}
+	}
+
+	private createBadge(headerEl: HTMLElement, text: string, cls: string, title: string): void {
+		const badge = headerEl.createSpan({ cls, text });
+		badge.setAttr('aria-label', title);
+		badge.setAttr('title', title);
 	}
 
 	private async navigateTo(

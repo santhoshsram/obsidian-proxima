@@ -23,3 +23,12 @@ export const INDEXING_CONFIG = {
 	 */
 	embeddingConcurrency: 4,
 } as const;
+
+export const GRAPH_CONFIG = {
+	/**
+	 * Maximum number of link-only notes promoted onto the graph orbit from a
+	 * seed note's direct wikilinks. Prevents hub notes (e.g. MOCs) from
+	 * exploding the graph. Not currently exposed in the settings UI.
+	 */
+	seedLinkNodeCap: 50,
+} as const;

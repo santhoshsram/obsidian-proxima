@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-proxima",
-	"version": "1.1.1",
+	"version": "1.2.0",
 	"description": "Local-first semantic search for Obsidian: related notes, interactive proximity graph, and concept search, all on-device.",
 	"main": "main.js",
 	"type": "module",

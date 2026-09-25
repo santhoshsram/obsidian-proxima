@@ -8,11 +8,14 @@
 import { Modal, type App, setIcon } from 'obsidian';
 import type ProximaPlugin from '../../main';
 import { ContextGraphEngine } from './context-graph-engine';
+import { GraphControls, filterGraphData } from './graph-controls';
 import type { GraphData, GraphNode, GraphSeed } from '../../search/graph';
 import { debounce, type DebouncedFn } from '../../utils/debounce';
 
 export class ContextGraphModal extends Modal {
 	private engine: ContextGraphEngine | null = null;
+	private graphControls: GraphControls | null = null;
+	private rawGraphData: GraphData | null = null;
 	private currentCenterPath: string | null = null;
 
 	private searchWrapper!: HTMLElement;
@@ -144,9 +147,15 @@ export class ContextGraphModal extends Modal {
 			},
 		});
 
-		// 4. Initial seed
+		this.graphControls = new GraphControls(canvasContainer, this.plugin, () => {
+			this.applyGraphData(this.rawGraphData);
+		});
+
+		// 4. Initial seed — show the loading glow immediately so the modal
+		// isn't blank while the first graph fetch is in flight.
 		const activeFile = this.app.workspace.getActiveFile();
 		if (activeFile) {
+			this.engine.optimisticFocus('__init__', activeFile.basename);
 			void this.reseed({ type: 'note', path: activeFile.path });
 		} else {
 			this.setCenterBadge('', null);
@@ -235,7 +244,17 @@ export class ContextGraphModal extends Modal {
 			this.setCenterBadge(`"${seed.query}"`, null);
 		}
 
-		this.engine?.setData(data);
+		this.applyGraphData(data);
+	}
+
+	private applyGraphData(data: GraphData | null): void {
+		if (!data || !this.engine) return;
+		this.rawGraphData = data;
+		const opts = this.graphControls?.getOptions() ?? {
+			showRelated: true,
+			showWikilinks: false,
+		};
+		this.engine.setData(filterGraphData(data, opts));
 	}
 
 	private setCenterBadge(label: string, filePath: string | null): void {

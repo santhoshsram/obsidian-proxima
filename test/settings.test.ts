@@ -27,6 +27,14 @@ describe('settings', () => {
 		expect(DEFAULT_SETTINGS.sidebarViewMode).toBe('list');
 	});
 
+	it('defaults graphShowRelated to true', () => {
+		expect(DEFAULT_SETTINGS.graphShowRelated).toBe(true);
+	});
+
+	it('defaults graphShowWikilinks to false', () => {
+		expect(DEFAULT_SETTINGS.graphShowWikilinks).toBe(false);
+	});
+
 	it('formats null or undefined timestamp as Never', () => {
 		expect(formatLastIndexed(null)).toBe('Never');
 		expect(formatLastIndexed(undefined)).toBe('Never');

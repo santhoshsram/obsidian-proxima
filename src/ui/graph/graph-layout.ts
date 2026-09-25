@@ -5,6 +5,7 @@ import {
 	normalizeSimilarity,
 	RADIAL_DIST_MIN,
 	RADIAL_DIST_MAX,
+	ORBIT_RADIUS,
 	SATELLITE_ANGLE_SPREAD_RAD,
 	SATELLITE_DISTANCE,
 	DEFAULT_SIMILARITY,
@@ -122,7 +123,10 @@ export function computeNodePositions(
 		}
 		const norm = normalizeSimilarity(h1.similarity ?? DEFAULT_SIMILARITY);
 		const angle = h1Angles.get(h1.id) ?? 0;
-		const r = RADIAL_DIST_MIN * scale + (1 - norm) * (RADIAL_DIST_MAX - RADIAL_DIST_MIN) * scale;
+		const r =
+			h1.viaLink || h1.linkDirection
+				? ORBIT_RADIUS * scale
+				: RADIAL_DIST_MIN * scale + (1 - norm) * (RADIAL_DIST_MAX - RADIAL_DIST_MIN) * scale;
 		nodePosMap.set(h1.id, {
 			x: cx + Math.cos(angle) * r,
 			y: cy + Math.sin(angle) * r,

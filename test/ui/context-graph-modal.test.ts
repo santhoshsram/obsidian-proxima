@@ -182,6 +182,19 @@ describe('ContextGraphModal', () => {
 
 	it('toggles is-loading class on search container while query is executing', async () => {
 		let resolveQuery!: (data: GraphData) => void;
+		// The initial active-file reseed resolves immediately so the modal's
+		// opening loading glow completes (its requestAnimationFrame loop is a
+		// 0ms timer under fake timers and would otherwise spin forever).
+		mockGetGraphData.mockReturnValueOnce(
+			Promise.resolve({
+				seed: { type: 'note', path: 'Active.md' },
+				nodes: [
+					{ id: 'Active.md', label: 'Active', filePath: 'Active.md', isSeed: true, hop: 0, radius: 10 },
+				],
+				edges: [],
+			}),
+		);
+		// The search query hangs until we resolve it below.
 		mockGetGraphData.mockReturnValue(new Promise((res) => { resolveQuery = res; }));
 
 		modal.open();

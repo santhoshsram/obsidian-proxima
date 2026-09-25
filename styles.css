@@ -700,3 +700,107 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+/* Wikilink overlay color, theme-derived and overridable by themes/users. */
+:root {
+	--proxima-wikilink-color: var(--color-green, var(--color-cyan, #4ade80));
+}
+
+/* Related notes list badges */
+.proxima-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 6px;
+	border-radius: 8px;
+	font-size: 0.7em;
+	font-weight: 500;
+	line-height: 1.4;
+	white-space: nowrap;
+	flex-shrink: 0;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary-alt);
+	color: var(--text-muted);
+}
+
+.proxima-badge--link-out,
+.proxima-badge--link-in {
+	color: var(--proxima-wikilink-color);
+	border-color: var(--proxima-wikilink-color);
+}
+
+.proxima-badge--related {
+	color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
+/* Graph legend + toggle controls */
+.proxima-graph-controls {
+	position: absolute;
+	bottom: 8px;
+	left: 8px;
+	z-index: 5;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	align-items: flex-start;
+	pointer-events: auto;
+}
+
+.proxima-graph-legend {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 4px 8px;
+	font-size: 0.75em;
+	color: var(--text-muted);
+}
+
+.proxima-graph-legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.proxima-graph-legend-swatch {
+	width: 14px;
+	height: 2px;
+	border-radius: 1px;
+	display: inline-block;
+}
+
+.proxima-graph-legend-swatch--related {
+	background: var(--interactive-accent);
+}
+
+.proxima-graph-legend-swatch--linked {
+	background: var(--proxima-wikilink-color);
+}
+
+.proxima-graph-control-toggles {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	align-items: stretch;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 6px 8px;
+}
+
+.proxima-graph-control-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.8em;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.proxima-graph-control-toggle {
+	accent-color: var(--interactive-accent);
+	cursor: pointer;
+}
+

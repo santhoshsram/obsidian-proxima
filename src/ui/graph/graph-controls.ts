@@ -27,7 +27,16 @@ export function filterGraphData(data: GraphData, opts: GraphViewOptions): GraphD
 	let nodes = data.nodes;
 	let edges = data.edges;
 
-	if (!opts.showWikilinks) {
+	if (opts.showWikilinks) {
+		// Wikilink precedence over semantic hop roles: a note that is both a
+		// wikilink target and a hop-2 satellite is promoted to a first-class
+		// hop-1 orbit node (green, on the ring) instead of a dim satellite.
+		nodes = nodes.map((n) =>
+			(n.viaLink || n.linkDirection) && n.hop > 1
+				? { ...n, hop: 1, parentId: undefined, radius: 7 }
+				: n,
+		);
+	} else {
 		nodes = nodes
 			.filter((n) => !n.viaLink)
 			.map((n) => ({ ...n, viaLink: undefined, linkDirection: undefined }));

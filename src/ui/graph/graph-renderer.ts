@@ -309,7 +309,7 @@ function styleForNode(
 	if (node.isSeed) {
 		return { nodeAlpha: 1.0, fillStyle: theme.accentColor, strokeStyle: theme.accentColor, strokeWidth: NODE_STROKE_SEED };
 	}
-	if (node.viaLink) {
+	if (node.viaLink || node.linkDirection) {
 		if (isHovered || isConnected) {
 			return {
 				nodeAlpha: 1.0,

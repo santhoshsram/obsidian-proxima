@@ -43,6 +43,43 @@ describe('filterGraphData', () => {
 		const dualEdge = out.edges.find((e) => e.id === 'c');
 		expect(dualEdge?.similarity).toBeUndefined();
 	});
+
+	it('promotes a wikilinked hop-2 satellite to hop-1 when wikilinks are shown (wiki > hop-2 precedence)', () => {
+		const d: GraphData = {
+			seed: { type: 'note', path: 'Seed.md' },
+			nodes: [
+				{ id: 'Seed.md', label: 'Seed', filePath: 'Seed.md', isSeed: true, hop: 0 },
+				{ id: 'Parent.md', label: 'Parent', filePath: 'Parent.md', isSeed: false, hop: 1, similarity: 0.9 },
+				{
+					id: 'X.md',
+					label: 'X',
+					filePath: 'X.md',
+					isSeed: false,
+					hop: 2,
+					parentId: 'Parent.md',
+					similarity: 0.7,
+					linkDirection: 'out',
+					radius: 4.5,
+				},
+			],
+			edges: [
+				{ id: 'a', source: 'Seed.md', target: 'Parent.md', similarity: 0.9 },
+				{ id: 'b', source: 'Parent.md', target: 'X.md', similarity: 0.7, isSecondary: true, kind: 'satellite' },
+				{ id: 'c', source: 'Seed.md', target: 'X.md', wikiLink: 'forward' },
+			],
+		};
+
+		const shown = filterGraphData(d, { showRelated: true, showWikilinks: true });
+		const xShown = shown.nodes.find((n) => n.id === 'X.md');
+		expect(xShown?.hop).toBe(1);
+		expect(xShown?.parentId).toBeUndefined();
+
+		const hidden = filterGraphData(d, { showRelated: true, showWikilinks: false });
+		const xHidden = hidden.nodes.find((n) => n.id === 'X.md');
+		expect(xHidden?.hop).toBe(2);
+		expect(xHidden?.parentId).toBe('Parent.md');
+		expect(xHidden?.linkDirection).toBeUndefined();
+	});
 });
 
 describe('GraphControls', () => {

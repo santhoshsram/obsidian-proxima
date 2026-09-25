@@ -37,7 +37,18 @@ Fine-tune matching mode, result limits, similarity thresholds, and debug logging
 - **Proxima Graph:** An interactive graph of conceptually related notes, with hover previews.
 - **Wikilink overlay:** Explicit `[[links]]` and backlinks appear alongside semantic matches — as badges in the related notes list and as a themed orbit ring in the graph.
 - **Two-Stage Funnel:** Dense vector retrieval refined by an on-device cross-encoder reranker for high precision.
+- **Meaning-aware chunking:** Notes are split on markdown structure and sentence/paragraph boundaries — not random overlapping windows — so semantic matches are more accurate.
 - **100% Local & Private:** Runs entirely on-device via WebGPU/WASM. Zero telemetry, no cloud APIs, no external subscriptions.
+
+## Meaning-aware chunking
+
+Most semantic tools slice text into fixed, overlapping windows. Proxima reads your notes the way you wrote them.
+
+- **Markdown-aware:** it reads your note's structure — headings, sections and subsections, tables, and lists — so chunks line up with how you organized the note.
+- **Sentence-safe:** it respects paragraph and sentence boundaries, so each chunk ends at a natural break rather than cutting a thought mid-sentence.
+- **Context-preserving:** every chunk carries its note title and section heading, so the embedding knows *where* the text lives, not just *what* it says.
+
+Because each embedding captures a whole idea instead of an arbitrary slice, similarity scores track meaning — and your related notes are more accurate.
 
 ## Privacy
 
